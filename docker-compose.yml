@@ -1,0 +1,76 @@
+# vLLM serving NVFP4 Nemotron-Omni on one DGX Spark (GB10). Needs Docker and
+# the NVIDIA container toolkit. `serve-nemotron.sh` is the non-Docker route.
+#
+#   cp .env.example .env     # HF_TOKEN -- the model card is gated
+#   docker compose up
+#
+# The agent server (dell-innofest, apps/server) is run separately and pointed
+# at http://<this box>:8000/v1 with MODEL_NAME=nemotron.
+
+services:
+  vllm:
+    image: vllm/vllm-openai:v0.20.0-aarch64-cu130-ubuntu2404
+    # The image's entrypoint is already `vllm serve`, so this list starts with
+    # the model id. Same arguments as serve_args() in serve-nemotron.sh.
+    command:
+      - nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4
+      - --served-model-name
+      - nemotron
+      - --trust-remote-code
+      - --host
+      - '0.0.0.0'
+      - --port
+      - '8000'
+      - --max-model-len
+      - '131072'
+      - --kv-cache-dtype
+      - fp8
+      - --gpu-memory-utilization
+      - '0.7'
+      - --mamba-ssm-cache-dtype
+      - float32
+      - --media-io-kwargs
+      - '{"video": {"fps": 2, "num_frames": 256}}'
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - qwen3_coder
+      - --reasoning-parser
+      - nemotron_v3
+      - --moe-backend
+      - flashinfer_cutlass
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      # If flashinfer_cutlass fails to load or produces gibberish on SM121,
+      # uncomment these three and drop --moe-backend from the command above.
+      # VLLM_NVFP4_GEMM_BACKEND: marlin
+      # VLLM_USE_FLASHINFER_MOE_FP4: '0'
+      # VLLM_MARLIN_USE_ATOMIC_ADD: '1'
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    ipc: host
+    ports:
+      - '8000:8000'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # First boot downloads ~21 GB and loading takes minutes, hence the long
+    # start_period. Start the agent server only once this reports healthy, or
+    # its budget discovery locks in the fallback context window.
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/models')"
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 45m
+    restart: unless-stopped
+
+volumes:
+  hf-cache:
