@@ -1,0 +1,71 @@
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - luna-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  translator:
+    build:
+      context: ./translator
+      dockerfile: Dockerfile
+    # Match the host credential owner so 0700/0600 bind-mounted secrets remain usable.
+    user: "${TRANSLATOR_UID}:${TRANSLATOR_GID}"
+    environment:
+      SERVICE_KEY: ${TRANSLATOR_SERVICE_KEY}
+      OPENAI_REFRESH_TOKEN_FILE: /run/credentials/refresh-token
+      OPENAI_ACCOUNT_ID_FILE: /run/credentials/account-id
+      OPENAI_REFRESH_TOKEN_WRITE_FILE: ${OPENAI_REFRESH_TOKEN_WRITE_FILE-/run/credentials/refresh-token}
+    volumes:
+      # A directory mount is required for atomic refresh-token replacement.
+      - ${OPENAI_CREDENTIALS_HOST_DIR}:/run/credentials:rw
+    expose:
+      - "8787"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-v1.83.3-stable
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    ports:
+      - "${LITELLM_HOST_PORT}:4000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      TRANSLATOR_API_KEY: ${TRANSLATOR_SERVICE_KEY}
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      translator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 20s
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.8.1
+    profiles: ["edge"]
+    command: ["tunnel", "run", "--token", "${CLOUDFLARE_TUNNEL_TOKEN}"]
+    depends_on:
+      litellm:
+        condition: service_healthy
+
+volumes:
+  luna-postgres-data:
