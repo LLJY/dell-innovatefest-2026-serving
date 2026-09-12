@@ -35,6 +35,27 @@ services:
       timeout: 5s
       retries: 12
 
+  omnilion-adapter:
+    build:
+      context: ./omnilion-adapter
+      dockerfile: Dockerfile
+    environment:
+      SERVICE_KEY: ${OMNILION_API_KEY}
+      OMNILION_API_KEY: ${OMNILION_API_KEY}
+      OMNILION_API_BASE: ${OMNILION_API_BASE}
+      OMNILION_SERVED_MODEL: OmniLion
+      BACKEND_TIMEOUT_MS: ${OMNILION_BACKEND_TIMEOUT_MS:-300000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    expose:
+      - "8790"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:8790/healthz').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 10s
+
   litellm:
     image: ghcr.io/berriai/litellm:main-v1.83.3-stable
     command: ["--config", "/app/config.yaml", "--port", "4000"]
@@ -45,12 +66,15 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
       TRANSLATOR_API_KEY: ${TRANSLATOR_SERVICE_KEY}
+      OMNILION_ADAPTER_API_KEY: ${OMNILION_API_KEY}
     volumes:
       - ./litellm-config.yaml:/app/config.yaml:ro
     depends_on:
       postgres:
         condition: service_healthy
       translator:
+        condition: service_healthy
+      omnilion-adapter:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')"]

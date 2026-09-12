@@ -19,13 +19,13 @@ wait_for_http "$LUNA_URL/health/liveliness" 30 || die "LiteLLM is not reachable 
 
 duration=${LUNA_KEY_DURATION:-24h}
 response=$(mktemp "${TMPDIR:-/tmp}/luna-key-response.XXXXXX")
-trap 'rm -f "$response"' EXIT
+trap 'gio trash "$response" >/dev/null 2>&1 || true' EXIT
 chmod 600 "$response"
 
 http_code=$(curl -sS -o "$response" -w '%{http_code}' "$LUNA_URL/key/generate" \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H 'Content-Type: application/json' \
-  --data-binary "{\"models\":[\"gpt-5.6-sol\"],\"key_alias\":\"luna-deployment\",\"user_id\":\"openshift\",\"duration\":\"$duration\"}")
+  --data-binary "{\"models\":[\"gpt-5.6-luna\",\"omnilion\"],\"key_alias\":\"luna-deployment\",\"user_id\":\"openshift\",\"duration\":\"$duration\"}")
 [[ "$http_code" == 200 ]] || { cat "$response" >&2; die "key generation returned HTTP $http_code"; }
 
 python3 - "$response" "$LUNA_KEY_FILE" <<'PY'
@@ -43,4 +43,4 @@ with os.fdopen(fd, "w", encoding="utf-8") as target:
 PY
 
 printf 'Saved the %s deployment key to %s (the key was not printed).\n' "$duration" "$LUNA_KEY_FILE"
-printf 'Run scripts/luna-smoke.sh next.\n'
+printf 'Run scripts/luna-smoke.sh and scripts/omnilion-smoke.sh AUDIO_FILE next.\n'

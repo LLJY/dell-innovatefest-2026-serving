@@ -18,7 +18,7 @@ curl -fsS "$LUNA_URL/v1/models" -H "Authorization: Bearer $LUNA_KEY" | python3 -
 
 printf '\n== Non-streaming text ==\n'
 curl -fsS "$api" "${auth[@]}" --data-binary \
-  '{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"Reply with exactly: luna live"}]}' \
+  '{"model":"gpt-5.6-luna","messages":[{"role":"user","content":"Reply with exactly: luna live"}]}' \
   | tee "$tmp_dir/text.json" | python3 -m json.tool
 python3 - "$tmp_dir/text.json" <<'PY'
 import json, sys
@@ -30,13 +30,13 @@ PY
 
 printf '\n== Streaming text ==\n'
 curl -fsSN "$api" "${auth[@]}" --data-binary \
-  '{"model":"gpt-5.6-sol","stream":true,"messages":[{"role":"user","content":"Stream a greeting in five words or fewer."}]}' \
+  '{"model":"gpt-5.6-luna","stream":true,"messages":[{"role":"user","content":"Stream a greeting in five words or fewer."}]}' \
   | tee "$tmp_dir/stream.sse"
 grep -q '^data: \[DONE\]' "$tmp_dir/stream.sse" || die "stream did not terminate with [DONE]"
 
 printf '\n== Forced tool call ==\n'
 cat > "$tmp_dir/tool-request.json" <<'JSON'
-{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"Call get_server_time now."}],"tools":[{"type":"function","function":{"name":"get_server_time","description":"Return the current server time supplied by the caller.","parameters":{"type":"object","properties":{},"additionalProperties":false}}}],"tool_choice":{"type":"function","function":{"name":"get_server_time"}}}
+{"model":"gpt-5.6-luna","messages":[{"role":"user","content":"Call get_server_time now."}],"tools":[{"type":"function","function":{"name":"get_server_time","description":"Return the current server time supplied by the caller.","parameters":{"type":"object","properties":{},"additionalProperties":false}}}],"tool_choice":{"type":"function","function":{"name":"get_server_time"}}}
 JSON
 curl -fsS "$api" "${auth[@]}" --data-binary @"$tmp_dir/tool-request.json" > "$tmp_dir/tool-response.json"
 python3 -m json.tool < "$tmp_dir/tool-response.json"

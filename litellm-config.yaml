@@ -1,14 +1,22 @@
 model_list:
-  - model_name: gpt-5.6-sol
+  - model_name: gpt-5.6-luna
     litellm_params:
-      model: openai/gpt-5.6-sol
+      model: openai/gpt-5.6-luna
       api_base: http://translator:8787/v1
       api_key: os.environ/TRANSLATOR_API_KEY
+
+  - model_name: omnilion
+    litellm_params:
+      model: hosted_vllm/OmniLion
+      api_base: http://omnilion-adapter:8790/v1
+      api_key: os.environ/OMNILION_ADAPTER_API_KEY
+    model_info:
+      mode: audio_transcription
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL
 
 litellm_settings:
-  request_timeout: 120
+  request_timeout: 360
   drop_params: true

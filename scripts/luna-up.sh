@@ -39,10 +39,11 @@ mode=$(file_mode "$account_file")
 
 printf 'Validating Compose configuration...\n'
 compose config --quiet
-printf 'Building the ARM64-compatible translator...\n'
-compose build translator
-printf 'Starting PostgreSQL, translator, and LiteLLM...\n'
-compose up -d postgres translator litellm
+"$SCRIPT_DIR/omnilion-runtime.sh" up
+printf 'Building the ARM64-compatible translator and OmniLion adapter...\n'
+compose build translator omnilion-adapter
+printf 'Starting PostgreSQL, translator, OmniLion adapter, and LiteLLM...\n'
+compose up -d postgres translator omnilion-adapter litellm
 
 if ! wait_for_http "$LUNA_URL/health/liveliness" 300; then
   compose ps >&2 || true
@@ -50,5 +51,5 @@ if ! wait_for_http "$LUNA_URL/health/liveliness" 300; then
 fi
 
 compose ps
-printf 'Luna core is healthy at %s\n' "$LUNA_URL"
-printf 'Next: scripts/luna-create-key.sh && scripts/luna-smoke.sh\n'
+printf 'Luna and OmniLion are healthy through LiteLLM at %s\n' "$LUNA_URL"
+printf 'Next: scripts/luna-create-key.sh, scripts/luna-smoke.sh, and scripts/omnilion-smoke.sh AUDIO_FILE\n'
