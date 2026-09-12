@@ -1,7 +1,11 @@
-# Luna operations
+# Luna + OmniLion operations
 
-This is the Luna-only stack. Do not start the legacy Compose file or any Qwen,
-P21, vLLM, or audio service. Keep `.env` private and replace all example values.
+The active hackathon stack is the Luna translator, PostgreSQL, LiteLLM, and one
+native OmniLion vLLM process. OmniLion runs from the pinned host virtual
+environment under a transient user-systemd unit; LiteLLM reaches it through the
+Docker host gateway. Do not start the legacy combined Compose file or the
+deferred standalone Qwen-ASR service. Keep `.env` private and replace all
+example values.
 
 ## Start and inspect
 
@@ -17,9 +21,40 @@ Use the official Codex device-code flow to create the mode-`0600`
 codex --version
 scripts/luna-oauth-login.sh
 scripts/luna-up.sh
+scripts/omnilion-service.sh status
 scripts/luna-create-key.sh
 scripts/luna-smoke.sh
+# Later, stop both Compose and native vLLM without deleting data volumes:
+scripts/luna-down.sh
 ```
+
+For an OmniLion-only deployment without the OpenAI translator or PostgreSQL,
+use the standalone wrapper. Select either immutable public release; it downloads
+the selected revision, installs its bundled vLLM plugin, and starts native vLLM
+plus a stateless LiteLLM container:
+
+```sh
+scripts/omnilion-stack.sh up bf16
+# Or use NVFP4 weights, BF16 activations, and vLLM's Marlin backend:
+scripts/omnilion-stack.sh up nvfp4
+scripts/omnilion-stack.sh status
+scripts/omnilion-stack.sh down
+```
+
+The presets are pinned to:
+
+```text
+bf16   LLJYY/OmniLion@405ef8e1d21224edca0bdff6499389d4260c17e2
+nvfp4  LLJYY/OmniLion-NVFP4-W4A16@cc2628352cf7eb76c93b992c4f3079f4b3bc9498
+```
+
+`up <variant>` inspects the active vLLM process and switches it when either the
+repository or revision differs. Use `OMNILION_VARIANT=bf16|nvfp4` in `.env` for
+the full Luna launcher. The `custom` variant preserves explicitly configured
+`OMNILION_MODEL` and `OMNILION_REVISION` values.
+
+Do not run the standalone wrapper on the same `LITELLM_HOST_PORT` as the full
+Luna stack; choose another port in `.env` when both are needed concurrently.
 
 `luna-oauth-login.sh` runs `codex login --device-auth`. Open the displayed URL
 on another trusted device and enter the one-time code. The script uses a
@@ -44,11 +79,39 @@ curl -fsS http://127.0.0.1:4000/health/liveliness
 curl -fsS -H "Authorization: Bearer $LITELLM_MASTER_KEY" http://127.0.0.1:4000/v1/models
 ```
 
+The OmniLion service wrapper verifies that `OMNILION_BIND_HOST` is exactly
+Docker's current default-bridge gateway and that `OMNILION_API_BASE` is
+`http://host.docker.internal:<OMNILION_PORT>/v1`; arbitrary LAN addresses and
+wildcards are rejected. Its `/v1` routes also require `OMNILION_API_KEY`.
+LiteLLM is the only intended client-facing model port. Inspect or restart the
+model without disturbing PostgreSQL:
+
+```sh
+scripts/omnilion-service.sh status
+scripts/omnilion-service.sh logs
+journalctl --user -u omnilion-vllm -n 200 --no-pager
+scripts/omnilion-service.sh restart
+```
+
+A full load takes roughly three minutes for BF16 and four minutes for NVFP4 on
+the GB10. The standalone
+`scripts/omnilion-stack.sh` downloads `OMNILION_MODEL` at the exact
+`OMNILION_REVISION` into the Hugging Face cache and installs the plugin wheel
+bundled in that immutable snapshot; subsequent starts reuse the cache. Both
+variants use BF16 activations, `max-model-len=8192`, one concurrent sequence,
+65% GPU-memory utilization, and 30 video frames. NVFP4 execution selects Marlin
+from the checkpoint metadata. Text, image, video, audio, and
+one video plus one audio item are accepted. Through LiteLLM, use
+`model="OmniLion"`; content parts follow the OpenAI-compatible vLLM shapes
+`image_url`, `video_url`, and `input_audio`.
+
 Only LiteLLM publishes port 4000; translator and PostgreSQL are internal.
 Required private inputs are `POSTGRES_PASSWORD`, `LITELLM_MASTER_KEY`,
-`LITELLM_SALT_KEY`, `TRANSLATOR_SERVICE_KEY`,
-`OPENAI_CREDENTIALS_HOST_DIR`, and (only for edge)
-`CLOUDFLARE_TUNNEL_TOKEN`. The credential directory must contain a file named
+`LITELLM_SALT_KEY`, `TRANSLATOR_SERVICE_KEY`, `OMNILION_API_KEY`, and
+`OPENAI_CREDENTIALS_HOST_DIR`. `LLJYY/OmniLion` is public, so its pinned BF16
+revision needs no `HF_TOKEN`. Set a read-only token only for a future private
+model derivative or where the Hub requires authenticated downloads.
+`CLOUDFLARE_TUNNEL_TOKEN` is required only for the edge profile. The credential
 `refresh-token` and `account-id`, be owned by `TRANSLATOR_UID:TRANSLATOR_GID`,
 be writable by that identity for atomic OAuth token rotation, and remain outside
 source control with host mode `0700` and file mode `0600`. `.env.example`
@@ -65,7 +128,7 @@ master key stays on GB10 and is never copied to a client or OpenShift:
 ```sh
 curl -fsS http://127.0.0.1:4000/key/generate \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H 'Content-Type: application/json' \
-  -d '{"models":["gpt-5.6-sol"],"key_alias":"luna-deployment","user_id":"openshift","duration":"24h"}'
+  -d '{"models":["gpt-5.6-sol","OmniLion"],"key_alias":"luna-deployment","user_id":"openshift","duration":"24h"}'
 ```
 
 Per-team authentication remains in the external loop; do not create one LiteLLM
@@ -96,9 +159,11 @@ docker compose -f compose.luna.yml --env-file .env exec -T postgres \
   pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > luna-postgres.sql
 ```
 
-A reset is destructive: `docker compose -f compose.luna.yml --env-file .env
-down`, then `docker volume rm gb10-serving_luna-postgres-data`, and start
-again; then generate one new expiring key.
+A normal shutdown is `scripts/luna-down.sh`; it stops Compose and native
+OmniLion while preserving named volumes. A reset is destructive: run
+`scripts/luna-down.sh`, then `docker volume rm
+gb10-serving_luna-postgres-data`, and start again; then generate one new
+expiring key.
 
 Rotate in this order: revoke/replace the OAuth grant and refresh-token file;
 restart translator; replace the translator service key in `.env` and restart

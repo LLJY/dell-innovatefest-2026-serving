@@ -45,6 +45,10 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
       TRANSLATOR_API_KEY: ${TRANSLATOR_SERVICE_KEY}
+      OMNILION_API_BASE: ${OMNILION_API_BASE}
+      OMNILION_API_KEY: ${OMNILION_API_KEY}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./litellm-config.yaml:/app/config.yaml:ro
     depends_on:

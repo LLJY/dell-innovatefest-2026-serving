@@ -1,0 +1,10 @@
+# Verified OmniLion BF16 runtime
+python==3.12.*
+vllm==0.29.0
+transformers==5.17.0
+soundfile==0.13.1
+ninja==1.13.0
+# PyTorch build is platform-specific; verified on ARM64 CUDA 12.9:
+torch==2.13.0+cu129
+# Install the matching wheel separately:
+omnilion-vllm-plugin==0.1.0

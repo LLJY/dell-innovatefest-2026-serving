@@ -6,8 +6,9 @@ source "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/luna-common.sh"
 require_command docker
 require_command curl
 load_env_file
+resolve_omnilion_variant
 
-required=(POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD LITELLM_MASTER_KEY LITELLM_SALT_KEY TRANSLATOR_SERVICE_KEY OPENAI_CREDENTIALS_HOST_DIR TRANSLATOR_UID TRANSLATOR_GID LITELLM_HOST_PORT)
+required=(POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD LITELLM_MASTER_KEY LITELLM_SALT_KEY TRANSLATOR_SERVICE_KEY OPENAI_CREDENTIALS_HOST_DIR TRANSLATOR_UID TRANSLATOR_GID LITELLM_HOST_PORT OMNILION_MODEL OMNILION_REVISION OMNILION_VENV OMNILION_API_KEY OMNILION_API_BASE OMNILION_BIND_HOST OMNILION_PORT OMNILION_MAX_MODEL_LEN OMNILION_GPU_MEMORY_UTILIZATION OMNILION_VIDEO_NUM_FRAMES)
 for name in "${required[@]}"; do
   [[ -n "${!name:-}" ]] || die "$name is missing from $ENV_FILE"
   [[ "${!name}" != *replace-* ]] || die "$name still contains an example placeholder"
@@ -41,12 +42,28 @@ printf 'Validating Compose configuration...\n'
 compose config --quiet
 printf 'Building the ARM64-compatible translator...\n'
 compose build translator
-printf 'Starting PostgreSQL, translator, and LiteLLM...\n'
-compose up -d postgres translator litellm
+printf 'Starting PostgreSQL and translator...\n'
+if ! compose up -d postgres translator; then
+  compose down --remove-orphans >/dev/null 2>&1 || true
+  die "PostgreSQL or translator startup failed; partial Compose stack removed"
+fi
+printf 'Starting native OmniLion on the Docker host gateway...\n'
+if ! "$SCRIPT_DIR/omnilion-service.sh" start; then
+  compose down --remove-orphans >/dev/null 2>&1 || true
+  die "OmniLion startup failed; Compose stack removed"
+fi
+printf 'Starting LiteLLM...\n'
+if ! compose up -d litellm; then
+  "$SCRIPT_DIR/omnilion-service.sh" stop >/dev/null 2>&1 || true
+  compose down --remove-orphans >/dev/null 2>&1 || true
+  die "LiteLLM startup failed; OmniLion and Compose stack stopped"
+fi
 
 if ! wait_for_http "$LUNA_URL/health/liveliness" 300; then
   compose ps >&2 || true
-  die "LiteLLM did not become healthy within 300 seconds; inspect with: docker compose -f compose.luna.yml --env-file .env logs --tail=100"
+  "$SCRIPT_DIR/omnilion-service.sh" stop >/dev/null 2>&1 || true
+  compose down --remove-orphans >/dev/null 2>&1 || true
+  die "LiteLLM did not become healthy within 300 seconds; OmniLion and Compose stack stopped"
 fi
 
 compose ps
