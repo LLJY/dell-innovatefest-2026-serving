@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omnilion-vllm-plugin"
+version = "0.1.0"
+description = "Native text, vision, audio, and joint-AV vLLM 0.29 plugin for OmniLion"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+  "vllm==0.29.0",
+  "transformers==5.17.0",
+  "soundfile==0.13.1",
+]
+
+[project.entry-points."vllm.general_plugins"]
+omnilion = "omnilion_vllm_plugin:register"
+
+[tool.setuptools.packages.find]
+where = ["src"]

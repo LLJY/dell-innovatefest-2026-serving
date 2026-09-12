@@ -25,7 +25,7 @@ chmod 600 "$response"
 http_code=$(curl -sS -o "$response" -w '%{http_code}' "$LUNA_URL/key/generate" \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H 'Content-Type: application/json' \
-  --data-binary "{\"models\":[\"gpt-5.6-sol\"],\"key_alias\":\"luna-deployment\",\"user_id\":\"openshift\",\"duration\":\"$duration\"}")
+  --data-binary "{\"models\":[\"gpt-5.6-sol\",\"OmniLion\"],\"key_alias\":\"luna-deployment\",\"user_id\":\"openshift\",\"duration\":\"$duration\"}")
 [[ "$http_code" == 200 ]] || { cat "$response" >&2; die "key generation returned HTTP $http_code"; }
 
 python3 - "$response" "$LUNA_KEY_FILE" <<'PY'

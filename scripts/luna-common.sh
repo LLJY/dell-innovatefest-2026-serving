@@ -19,15 +19,15 @@ require_command() {
 }
 
 file_mode() {
-  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1" 2>/dev/null || true
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null || true
 }
 
 file_uid() {
-  stat -f '%u' "$1" 2>/dev/null || stat -c '%u' "$1" 2>/dev/null || true
+  stat -c '%u' "$1" 2>/dev/null || stat -f '%u' "$1" 2>/dev/null || true
 }
 
 file_gid() {
-  stat -f '%g' "$1" 2>/dev/null || stat -c '%g' "$1" 2>/dev/null || true
+  stat -c '%g' "$1" 2>/dev/null || stat -f '%g' "$1" 2>/dev/null || true
 }
 
 canonical_existing_dir() {

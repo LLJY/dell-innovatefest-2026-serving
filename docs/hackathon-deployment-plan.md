@@ -1,10 +1,12 @@
 # Hackathon deployment plan — models on GB10, agentic loop on OpenShift
 
-**Current state (active): `compose.luna.yml` is the only active build.** The
-Luna-only translator + PostgreSQL + LiteLLM stack is the operator path. The
-Qwen/P21/vLLM/audio sections below are historical design and are **deferred**;
-do not follow their commands or start those services now. Sibling-repository
-agent-loop and tool execution remain deferred.
+**Current state (active): `compose.luna.yml` plus native OmniLion.** The
+translator + PostgreSQL + LiteLLM stack is the client-facing operator path;
+OmniLion runs as one authenticated, Docker-host-gateway-bound vLLM 0.29 process
+from the pinned host venv. Native text, image, video, audio, and joint video plus
+audio behavior have passed on the 16-shard BF16 candidate. The older standalone
+Qwen-ASR and split audio-gateway sections below are historical and deferred.
+Sibling-repository agent-loop and tool execution remain deferred.
 
 Legacy combined-stack status: design agreed, not built. Spike (`chat.ts`) proven live against the
 ChatGPT subscription (200s pre-quota); declarative aliasing, lsp trial, and

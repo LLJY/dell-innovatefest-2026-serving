@@ -28,6 +28,19 @@ if not isinstance(text, str) or not text.strip():
     raise SystemExit("empty non-streaming assistant response")
 PY
 
+printf '\n== Native OmniLion through LiteLLM ==\n'
+curl -fsS "$api" "${auth[@]}" --data-binary \
+  '{"model":"OmniLion","temperature":0,"max_tokens":16,"chat_template_kwargs":{"enable_thinking":false},"messages":[{"role":"user","content":"Reply with exactly OMNILION_READY and nothing else."}]}' \
+  > "$tmp_dir/omnilion.json"
+python3 -m json.tool < "$tmp_dir/omnilion.json"
+python3 - "$tmp_dir/omnilion.json" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+text = body["choices"][0]["message"]["content"].strip()
+if text != "OMNILION_READY":
+    raise SystemExit(f"unexpected OmniLion response: {text!r}")
+PY
+
 printf '\n== Streaming text ==\n'
 curl -fsSN "$api" "${auth[@]}" --data-binary \
   '{"model":"gpt-5.6-sol","stream":true,"messages":[{"role":"user","content":"Stream a greeting in five words or fewer."}]}' \
