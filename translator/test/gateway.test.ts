@@ -129,7 +129,7 @@ describe("Luna Chat Completions adapter", () => {
     expect(output).toContain('"finish_reason":"stop"');
     expect(output).toContain('"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}');
     expect(output).toContain("data: [DONE]");
-    expect(fake.state.requests[0]).toMatchObject({ model: "gpt-test", store: false, stream: true, instructions: "be concise" });
+    expect(fake.state.requests[0]).toMatchObject({ model: "gpt-test", reasoning: { effort: "high" }, store: false, stream: true, instructions: "be concise" });
     expect(fake.state.headers[0]).toEqual({ authorization: "Bearer access-1", accountId: "account-test" });
   });
 

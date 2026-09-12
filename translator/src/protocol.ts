@@ -107,7 +107,7 @@ export function toResponsesRequest(request: ChatRequest): JsonObject {
     }
     input.push({ type: "message", role, content: [{ type: "input_text", text: textContent(message.content, `messages[${index}].content`) }] });
   }
-  const result: JsonObject = { model: normalizeModel(request.model), input, store: false, stream: true };
+  const result: JsonObject = { model: normalizeModel(request.model), input, reasoning: { effort: "high" }, store: false, stream: true };
   if (instructions.length > 0) result.instructions = instructions.join("\n\n");
   const tools = mapTools(request.tools);
   if (tools) result.tools = tools;

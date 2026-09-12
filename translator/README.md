@@ -5,7 +5,7 @@ This Bun sidecar accepts only OpenAI Chat Completions at `POST /v1/chat/completi
 ## Contract and boundaries
 
 - `GET /healthz` is unauthenticated. The Chat Completions route requires an exact `Authorization: Bearer $SERVICE_KEY` before it contacts Codex. Every other route is `404`.
-- The adapter sends `store:false` and `stream:true` upstream, normalizes `openai/` prefixes and `-1m` / `-fast` suffixes, and adds OAuth Bearer plus `ChatGPT-Account-ID` headers.
+- The adapter sends `reasoning: { effort: "high" }`, `store:false`, and `stream:true` upstream, normalizes `openai/` prefixes and `-1m` / `-fast` suffixes, and adds OAuth Bearer plus `ChatGPT-Account-ID` headers.
 - System and developer messages become Responses `instructions`. User/assistant messages, prior function calls, and tool outputs become Responses input items. OpenAI function tools become Responses function tools.
 - It relays tool calls and tool outputs only. It never dispatches or executes a tool.
 - Upstream Responses SSE becomes Chat Completions SSE (`chat.completion.chunk` and `[DONE]`), or an aggregated `chat.completion` JSON object when `stream` is absent/false.
