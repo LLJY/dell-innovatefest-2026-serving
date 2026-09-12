@@ -18,8 +18,10 @@ It exposes two deployment-key-scoped aliases:
 | `gpt-5.6-luna` | `POST /v1/chat/completions` | Luna translator to Codex Responses |
 | `omnilion` | `POST /v1/audio/transcriptions` | Local OmniLion NVFP4 inference |
 
-See [`docs/api.md`](docs/api.md) for client examples and
-[`docs/luna-operations.md`](docs/luna-operations.md) for operator procedures.
+See [`docs/api.md`](docs/api.md) for client examples,
+[`docs/luna-operations.md`](docs/luna-operations.md) for operator procedures,
+and [`docs/omnilion-container.md`](docs/omnilion-container.md) for the dormant
+container profile.
 
 ## Architecture
 

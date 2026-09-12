@@ -1,0 +1,63 @@
+# Opt-in alternative to the default host-native OmniLion runtime.
+# Always combine this file with compose.luna.yml and enable its profile.
+services:
+  omnilion-vllm:
+    profiles: ["omnilion-container"]
+    image: ${OMNILION_VLLM_IMAGE:-dell-innovatefest-2026-serving-omnilion-vllm:0.1.0}
+    build:
+      context: ./omnilion-vllm
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${OMNILION_VLLM_BASE_IMAGE:-nvcr.io/nvidia/vllm:26.05.post1-py3}
+        OMNILION_MODEL: ${OMNILION_MODEL}
+        OMNILION_REVISION: ${OMNILION_REVISION}
+        OMNILION_PLUGIN_SHA256: ${OMNILION_PLUGIN_SHA256:-989711f66d16fb7f1e6e943c7b73babf0ab53018abf45276889ab89bd2a1df07}
+    environment:
+      OMNILION_MODEL: ${OMNILION_MODEL}
+      OMNILION_REVISION: ${OMNILION_REVISION}
+      OMNILION_MANIFEST_SHA256: ${OMNILION_MANIFEST_SHA256}
+      OMNILION_API_KEY: ${OMNILION_API_KEY}
+      OMNILION_MAX_MODEL_LEN: ${OMNILION_MAX_MODEL_LEN:-8192}
+      OMNILION_GPU_MEMORY_UTILIZATION: ${OMNILION_GPU_MEMORY_UTILIZATION:-0.65}
+      OMNILION_VIDEO_NUM_FRAMES: ${OMNILION_VIDEO_NUM_FRAMES:-30}
+      HF_HOME: /var/cache/huggingface
+      HF_HUB_DISABLE_IMPLICIT_TOKEN: "1"
+    volumes:
+      - omnilion-hf-cache:/var/cache/huggingface
+    expose:
+      - "8002"
+    ipc: host
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - >-
+          import os,urllib.request;
+          r=urllib.request.Request('http://127.0.0.1:8002/v1/models',headers={'Authorization':'Bearer '+os.environ['OMNILION_API_KEY']});
+          urllib.request.urlopen(r,timeout=5)
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 12m
+    stop_grace_period: 2m
+    restart: unless-stopped
+
+  omnilion-adapter:
+    environment:
+      OMNILION_API_BASE: http://omnilion-vllm:8002/v1
+    depends_on:
+      omnilion-vllm:
+        condition: service_healthy
+
+volumes:
+  omnilion-hf-cache:
