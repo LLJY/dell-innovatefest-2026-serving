@@ -29,15 +29,29 @@ scripts/luna-down.sh
 ```
 
 For an OmniLion-only deployment without the OpenAI translator or PostgreSQL,
-use the standalone wrapper. It downloads the pinned public BF16 revision,
-installs its bundled vLLM plugin, and starts native vLLM plus a stateless
-LiteLLM container:
+use the standalone wrapper. Select either immutable public release; it downloads
+the selected revision, installs its bundled vLLM plugin, and starts native vLLM
+plus a stateless LiteLLM container:
 
 ```sh
-scripts/omnilion-stack.sh up
+scripts/omnilion-stack.sh up bf16
+# Or use NVFP4 weights, BF16 activations, and vLLM's Marlin backend:
+scripts/omnilion-stack.sh up nvfp4
 scripts/omnilion-stack.sh status
 scripts/omnilion-stack.sh down
 ```
+
+The presets are pinned to:
+
+```text
+bf16   LLJYY/OmniLion@405ef8e1d21224edca0bdff6499389d4260c17e2
+nvfp4  LLJYY/OmniLion-NVFP4-W4A16@cc2628352cf7eb76c93b992c4f3079f4b3bc9498
+```
+
+`up <variant>` inspects the active vLLM process and switches it when either the
+repository or revision differs. Use `OMNILION_VARIANT=bf16|nvfp4` in `.env` for
+the full Luna launcher. The `custom` variant preserves explicitly configured
+`OMNILION_MODEL` and `OMNILION_REVISION` values.
 
 Do not run the standalone wrapper on the same `LITELLM_HOST_PORT` as the full
 Luna stack; choose another port in `.env` when both are needed concurrently.
@@ -79,12 +93,14 @@ journalctl --user -u omnilion-vllm -n 200 --no-pager
 scripts/omnilion-service.sh restart
 ```
 
-A full load takes roughly three minutes on the GB10. The standalone
+A full load takes roughly three minutes for BF16 and four minutes for NVFP4 on
+the GB10. The standalone
 `scripts/omnilion-stack.sh` downloads `OMNILION_MODEL` at the exact
 `OMNILION_REVISION` into the Hugging Face cache and installs the plugin wheel
-bundled in that immutable snapshot; subsequent starts reuse the cache. The
-proven release flags are BF16, `max-model-len=8192`, one concurrent sequence,
-65% GPU-memory utilization, and 30 video frames. Text, image, video, audio, and
+bundled in that immutable snapshot; subsequent starts reuse the cache. Both
+variants use BF16 activations, `max-model-len=8192`, one concurrent sequence,
+65% GPU-memory utilization, and 30 video frames. NVFP4 execution selects Marlin
+from the checkpoint metadata. Text, image, video, audio, and
 one video plus one audio item are accepted. Through LiteLLM, use
 `model="OmniLion"`; content parts follow the OpenAI-compatible vLLM shapes
 `image_url`, `video_url`, and `input_audio`.

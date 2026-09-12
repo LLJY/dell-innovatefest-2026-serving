@@ -10,6 +10,13 @@ require_command systemctl
 require_command systemd-run
 
 action=${1:-status}
+variant_arg=${2:-}
+(( $# <= 2 )) || die "usage: $0 {start|restart|stop|status|logs} [bf16|nvfp4|custom]"
+if [[ -n "$variant_arg" ]]; then
+  OMNILION_VARIANT_OVERRIDE=$variant_arg
+  export OMNILION_VARIANT_OVERRIDE
+fi
+resolve_omnilion_variant
 
 required=(
   OMNILION_MODEL
@@ -93,8 +100,13 @@ show_status() {
 case "$action" in
   start)
     if systemctl --user is-active --quiet "$unit"; then
-      show_status
-      exit $?
+      if omnilion_active_service_matches "$unit"; then
+        show_status
+        exit $?
+      fi
+      printf 'Switching OmniLion from the active model to %s (%s@%s).\n' \
+        "$OMNILION_VARIANT" "$OMNILION_MODEL" "$OMNILION_REVISION"
+      systemctl --user stop "$unit"
     fi
     systemctl --user reset-failed "$unit" >/dev/null 2>&1 || true
     command=(
@@ -141,7 +153,7 @@ case "$action" in
     ;;
   restart)
     systemctl --user stop "$unit" >/dev/null 2>&1 || true
-    exec "$0" start
+    exec "$0" start "$OMNILION_VARIANT"
     ;;
   stop)
     systemctl --user stop "$unit" >/dev/null 2>&1 || true
@@ -154,6 +166,6 @@ case "$action" in
     journalctl --user -u "$unit" --no-pager -n "${OMNILION_LOG_LINES:-200}"
     ;;
   *)
-    die "usage: $0 {start|restart|stop|status|logs}"
+    die "usage: $0 {start|restart|stop|status|logs} [bf16|nvfp4|custom]"
     ;;
 esac

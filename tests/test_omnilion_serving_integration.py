@@ -121,6 +121,90 @@ def test_example_environment_has_complete_omnilion_contract() -> None:
     assert required <= names
 
 
+def test_omnilion_variants_resolve_to_immutable_public_revisions() -> None:
+    common = ROOT / "scripts" / "luna-common.sh"
+    command = r'''
+source "$1"
+OMNILION_VARIANT_OVERRIDE=$2
+OMNILION_MODEL=wrong/model
+OMNILION_REVISION=wrong-revision
+resolve_omnilion_variant
+printf '%s|%s|%s\n' "$OMNILION_VARIANT" "$OMNILION_MODEL" "$OMNILION_REVISION"
+'''
+    expected = {
+        "bf16": "bf16|LLJYY/OmniLion|405ef8e1d21224edca0bdff6499389d4260c17e2",
+        "nvfp4": "nvfp4|LLJYY/OmniLion-NVFP4-W4A16|cc2628352cf7eb76c93b992c4f3079f4b3bc9498",
+        "custom": "custom|wrong/model|wrong-revision",
+    }
+    for variant, identity in expected.items():
+        result = subprocess.run(
+            ["bash", "-c", command, "bash", str(common), variant],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout.strip() == identity
+
+    invalid = subprocess.run(
+        ["bash", "-c", command, "bash", str(common), "int4-ish"],
+        capture_output=True,
+        text=True,
+    )
+    assert invalid.returncode != 0
+    assert "unknown OmniLion variant" in invalid.stderr
+
+
+def test_omnilion_command_identity_requires_model_and_revision() -> None:
+    common = ROOT / "scripts" / "luna-common.sh"
+    command = r'''
+source "$1"
+omnilion_command_matches "$2" "$3" /opt/venv/bin/vllm serve "$4" --served-model-name OmniLion --revision "$5"
+'''
+    base = [
+        "bash",
+        "-c",
+        command,
+        "bash",
+        str(common),
+        "LLJYY/OmniLion-NVFP4-W4A16",
+        "cc2628352cf7eb76c93b992c4f3079f4b3bc9498",
+    ]
+    assert subprocess.run(
+        [*base, "LLJYY/OmniLion-NVFP4-W4A16", "cc2628352cf7eb76c93b992c4f3079f4b3bc9498"]
+    ).returncode == 0
+    assert subprocess.run(
+        [*base, "LLJYY/OmniLion", "cc2628352cf7eb76c93b992c4f3079f4b3bc9498"]
+    ).returncode != 0
+    assert subprocess.run(
+        [*base, "LLJYY/OmniLion-NVFP4-W4A16", "405ef8e1d21224edca0bdff6499389d4260c17e2"]
+    ).returncode != 0
+
+
+def test_omnilion_deploy_scripts_expose_and_enforce_variants() -> None:
+    stack = (ROOT / "scripts" / "omnilion-stack.sh").read_text()
+    assert "variant_arg=${2:-}" in stack
+    assert "OMNILION_VARIANT_OVERRIDE=$variant_arg" in stack
+    assert "resolve_omnilion_variant" in stack
+    assert "{up|down|status} [bf16|nvfp4|custom]" in stack
+    assert 'stack_url=${OMNILION_LITELLM_URL:-http://127.0.0.1:${LITELLM_HOST_PORT}}' in stack
+    assert 'wait_for_http "$stack_url/health/liveliness"' in stack
+    assert "requested_variant=%s model=%s revision=%s" in stack
+
+    service = (ROOT / "scripts" / "omnilion-service.sh").read_text()
+    assert "variant_arg=${2:-}" in service
+    assert "resolve_omnilion_variant" in service
+    assert "omnilion_active_service_matches" in service
+    assert "Switching OmniLion from the active model to" in service
+
+    env = (ROOT / ".env.example").read_text()
+    assert "OMNILION_VARIANT=bf16" in env
+
+    operations = (ROOT / "docs" / "luna-operations.md").read_text()
+    assert "scripts/omnilion-stack.sh up bf16" in operations
+    assert "scripts/omnilion-stack.sh up nvfp4" in operations
+    assert "LLJYY/OmniLion-NVFP4-W4A16" in operations
+
+
 def test_common_permission_helpers_work_on_gnu_stat(tmp_path: Path) -> None:
     target = tmp_path / "secret.env"
     target.write_text("test=true\n")

@@ -18,6 +18,57 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
 
+resolve_omnilion_variant() {
+  local variant=${OMNILION_VARIANT_OVERRIDE:-${OMNILION_VARIANT:-custom}}
+  case "$variant" in
+    bf16)
+      OMNILION_MODEL=LLJYY/OmniLion
+      OMNILION_REVISION=405ef8e1d21224edca0bdff6499389d4260c17e2
+      ;;
+    nvfp4)
+      OMNILION_MODEL=LLJYY/OmniLion-NVFP4-W4A16
+      OMNILION_REVISION=cc2628352cf7eb76c93b992c4f3079f4b3bc9498
+      ;;
+    custom)
+      [[ -n "${OMNILION_MODEL:-}" ]] || die "OMNILION_MODEL is required for the custom variant"
+      [[ -n "${OMNILION_REVISION:-}" ]] || die "OMNILION_REVISION is required for the custom variant"
+      ;;
+    *)
+      die "unknown OmniLion variant: $variant (expected bf16, nvfp4, or custom)"
+      ;;
+  esac
+  OMNILION_VARIANT=$variant
+  export OMNILION_VARIANT OMNILION_MODEL OMNILION_REVISION
+}
+
+omnilion_command_matches() {
+  local expected_model=$1 expected_revision=$2 model= revision=
+  shift 2
+  while (( $# )); do
+    case "$1" in
+      serve)
+        shift
+        model=${1:-}
+        ;;
+      --revision)
+        shift
+        revision=${1:-}
+        ;;
+    esac
+    (( $# )) && shift
+  done
+  [[ "$model" == "$expected_model" && "$revision" == "$expected_revision" ]]
+}
+
+omnilion_active_service_matches() {
+  local unit=$1 pid
+  local -a command
+  pid=$(systemctl --user show "$unit" --property=MainPID --value 2>/dev/null || true)
+  [[ "$pid" =~ ^[1-9][0-9]*$ && -r "/proc/$pid/cmdline" ]] || return 1
+  mapfile -d '' -t command < "/proc/$pid/cmdline"
+  omnilion_command_matches "$OMNILION_MODEL" "$OMNILION_REVISION" "${command[@]}"
+}
+
 file_mode() {
   stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null || true
 }

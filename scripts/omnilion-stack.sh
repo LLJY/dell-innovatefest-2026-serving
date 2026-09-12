@@ -11,6 +11,13 @@ require_command systemctl
 container=${OMNILION_LITELLM_CONTAINER:-omnilion-litellm}
 image=${OMNILION_LITELLM_IMAGE:-ghcr.io/berriai/litellm:main-v1.83.3-stable}
 action=${1:-up}
+variant_arg=${2:-}
+(( $# <= 2 )) || die "usage: $0 {up|down|status} [bf16|nvfp4|custom]"
+if [[ -n "$variant_arg" ]]; then
+  OMNILION_VARIANT_OVERRIDE=$variant_arg
+  export OMNILION_VARIANT_OVERRIDE
+fi
+resolve_omnilion_variant
 
 required=(
   LITELLM_MASTER_KEY
@@ -33,12 +40,14 @@ done
 [[ "$LITELLM_MASTER_KEY" == sk-* ]] || die "LITELLM_MASTER_KEY must start with sk-"
 [[ "$LITELLM_HOST_PORT" =~ ^[0-9]+$ && "$LITELLM_HOST_PORT" -ge 1 && "$LITELLM_HOST_PORT" -le 65535 ]] \
   || die "LITELLM_HOST_PORT must be an integer from 1 to 65535"
+stack_url=${OMNILION_LITELLM_URL:-http://127.0.0.1:${LITELLM_HOST_PORT}}
 
 pull_and_install() {
   local python snapshot wheel
   python="$OMNILION_VENV/bin/python"
   [[ -x "$python" ]] || die "Python is not executable at $python"
-  printf 'Pulling OmniLion %s@%s...\n' "$OMNILION_MODEL" "$OMNILION_REVISION"
+  printf 'Pulling OmniLion variant %s (%s@%s)...\n' \
+    "$OMNILION_VARIANT" "$OMNILION_MODEL" "$OMNILION_REVISION"
   snapshot=$(
     "$python" - "$OMNILION_MODEL" "$OMNILION_REVISION" <<'PY'
 from huggingface_hub import snapshot_download
@@ -60,7 +69,7 @@ case "$action" in
       native_was_active=true
     fi
     pull_and_install
-    "$SCRIPT_DIR/omnilion-service.sh" start
+    "$SCRIPT_DIR/omnilion-service.sh" start "$OMNILION_VARIANT"
     docker rm -f "$container" >/dev/null 2>&1 || true
     if ! docker run -d \
       --name "$container" \
@@ -75,20 +84,22 @@ case "$action" in
       [[ "$native_was_active" == true ]] || "$SCRIPT_DIR/omnilion-service.sh" stop >/dev/null 2>&1 || true
       die "LiteLLM failed to start; newly started OmniLion was stopped"
     fi
-    if ! wait_for_http "$LUNA_URL/health/liveliness" 300; then
+    if ! wait_for_http "$stack_url/health/liveliness" 300; then
       docker logs --tail 120 "$container" >&2 || true
       docker rm -f "$container" >/dev/null 2>&1 || true
       [[ "$native_was_active" == true ]] || "$SCRIPT_DIR/omnilion-service.sh" stop >/dev/null 2>&1 || true
       die "LiteLLM did not become healthy; standalone container removed"
     fi
-    printf 'OmniLion is ready through LiteLLM at %s (model: OmniLion).\n' "$LUNA_URL"
+    printf 'OmniLion is ready through LiteLLM at %s (model: OmniLion).\n' "$stack_url"
     ;;
   down)
     docker rm -f "$container" >/dev/null 2>&1 || true
     "$SCRIPT_DIR/omnilion-service.sh" stop
     ;;
   status)
-    "$SCRIPT_DIR/omnilion-service.sh" status || true
+    printf 'requested_variant=%s model=%s revision=%s\n' \
+      "$OMNILION_VARIANT" "$OMNILION_MODEL" "$OMNILION_REVISION"
+    "$SCRIPT_DIR/omnilion-service.sh" status "$OMNILION_VARIANT" || true
     if docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null; then
       printf 'LiteLLM container: %s\n' "$container"
     else
@@ -97,6 +108,6 @@ case "$action" in
     fi
     ;;
   *)
-    die "usage: $0 {up|down|status}"
+    die "usage: $0 {up|down|status} [bf16|nvfp4|custom]"
     ;;
 esac
