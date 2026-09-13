@@ -97,6 +97,71 @@ async function backendHealth(): Promise<boolean> {
   }
 }
 
+const mediaUrlFields = new Set(["image_url", "video_url", "audio_url"]);
+
+function isRemoteMediaUrl(value: unknown): boolean {
+  const url = typeof value === "string"
+    ? value
+    : value && typeof value === "object" && !Array.isArray(value)
+      ? (value as { url?: unknown }).url
+      : undefined;
+  return typeof url === "string" && !url.trim().toLowerCase().startsWith("data:");
+}
+
+function hasRemoteMediaUrl(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasRemoteMediaUrl);
+  if (!value || typeof value !== "object") return false;
+
+  for (const [key, nested] of Object.entries(value)) {
+    if (mediaUrlFields.has(key) && isRemoteMediaUrl(nested)) return true;
+    if (hasRemoteMediaUrl(nested)) return true;
+  }
+  return false;
+}
+
+async function chatCompletions(request: Request): Promise<Response> {
+  const contentType = request.headers.get("content-type")?.toLowerCase() || "";
+  if (!contentType.startsWith("application/json")) {
+    return apiError("content-type must be application/json", 415, "unsupported_media_type");
+  }
+
+  let rawBody: string;
+  let body: unknown;
+  try {
+    rawBody = await request.text();
+    body = JSON.parse(rawBody);
+  } catch {
+    return apiError("invalid JSON request body", 400, "invalid_json");
+  }
+  if (hasRemoteMediaUrl(body)) {
+    return apiError(
+      "remote media URLs are not allowed; use an embedded data URL",
+      400,
+      "remote_media_url_not_allowed",
+    );
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${backendApiBase}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${backendApiKey}`,
+        "Content-Type": contentType,
+      },
+      body: rawBody,
+      signal: AbortSignal.timeout(backendTimeoutMs),
+    });
+  } catch {
+    return apiError("OmniLion backend is unavailable", 502, "backend_unavailable");
+  }
+
+  const headers = new Headers({ "Cache-Control": "no-store" });
+  const upstreamContentType = upstream.headers.get("content-type");
+  if (upstreamContentType) headers.set("Content-Type", upstreamContentType);
+  return new Response(upstream.body, { status: upstream.status, headers });
+}
+
 async function transcribe(request: Request): Promise<Response> {
   if (!request.headers.get("content-type")?.toLowerCase().startsWith("multipart/form-data")) {
     return apiError("content-type must be multipart/form-data", 415, "unsupported_media_type");
@@ -188,24 +253,30 @@ async function transcribe(request: Request): Promise<Response> {
   return json({ text: transcription });
 }
 
-const server = Bun.serve({
-  hostname: "0.0.0.0",
-  port,
-  maxRequestBodySize: maxAudioBytes + 1024 * 1024,
-  async fetch(request) {
-    const url = new URL(request.url);
-    if (request.method === "GET" && url.pathname === "/healthz") {
-      return (await backendHealth()) ? json({ status: "ok" }) : json({ status: "unavailable" }, 503);
-    }
-    if (!isAuthorized(request)) return apiError("invalid API key", 401, "invalid_api_key");
-    if (request.method === "GET" && url.pathname === "/v1/models") {
-      return json({ object: "list", data: [{ id: backendModel, object: "model", owned_by: "local" }] });
-    }
-    if (request.method === "POST" && url.pathname === "/v1/audio/transcriptions") {
-      return transcribe(request);
-    }
-    return apiError("not found", 404, "not_found");
-  },
-});
+export async function handleRequest(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  if (request.method === "GET" && url.pathname === "/healthz") {
+    return (await backendHealth()) ? json({ status: "ok" }) : json({ status: "unavailable" }, 503);
+  }
+  if (!isAuthorized(request)) return apiError("invalid API key", 401, "invalid_api_key");
+  if (request.method === "GET" && url.pathname === "/v1/models") {
+    return json({ object: "list", data: [{ id: backendModel, object: "model", owned_by: "local" }] });
+  }
+  if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
+    return chatCompletions(request);
+  }
+  if (request.method === "POST" && url.pathname === "/v1/audio/transcriptions") {
+    return transcribe(request);
+  }
+  return apiError("not found", 404, "not_found");
+}
 
-console.log(`OmniLion transcription adapter listening on port ${server.port}`);
+if (import.meta.main) {
+  const server = Bun.serve({
+    hostname: "0.0.0.0",
+    port,
+    maxRequestBodySize: maxAudioBytes + 1024 * 1024,
+    fetch: handleRequest,
+  });
+  console.log(`OmniLion adapter listening on port ${server.port}`);
+}

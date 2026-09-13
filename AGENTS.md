@@ -3,11 +3,11 @@
 ## Active architecture
 
 - Treat `compose.luna.yml` as the active deployment definition.
-- The core stack is PostgreSQL, the Luna translator, the private OmniLion transcription adapter, and LiteLLM. `cloudflared` is enabled only through the `edge` Compose profile.
+- The core stack is PostgreSQL, the Luna translator, the private OmniLion adapter, and LiteLLM. `cloudflared` is enabled only through the `edge` Compose profile.
 - LiteLLM is the only public model gateway. PostgreSQL, the translator, the OmniLion adapter, and native vLLM must remain private.
 - The public text model is `gpt-5.6-luna`. Do not reintroduce `gpt-5.6-sol` into active configuration, scripts, or examples unless explicitly requested.
 - The translator adapts OpenAI Chat Completions to the Codex Responses backend. It relays tool calls but never executes tools.
-- The public ASR alias is `omnilion`. Native vLLM binds only to the Docker bridge, and the internal adapter converts `/v1/audio/transcriptions` to OmniLion's audio Chat Completions contract. Include `omnilion` in the deployment-key allowlist and never expose vLLM or the adapter directly.
+- The public omnimodal alias is `omnilion`. Native vLLM binds only to the Docker bridge. The internal adapter proxies `/v1/chat/completions` and converts `/v1/audio/transcriptions` to OmniLion's audio Chat Completions contract. Include `omnilion` in the deployment-key allowlist and never expose vLLM or the adapter directly.
 - `compose.omnilion-container.yml` is an opt-in alternative to the host runtime. Never start it while the host `omnilion-vllm.service` is active, and never publish its vLLM port.
 - Treat the Qwen, legacy vLLM, audio, and combined-stack sections of `docs/hackathon-deployment-plan.md` as historical design.
 

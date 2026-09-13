@@ -1,7 +1,7 @@
 # Dell InnovateFest 2026 Serving
 
 One OpenAI-compatible LiteLLM gateway for the Luna text model and the local
-OmniLion speech model on NVIDIA DGX Spark.
+OmniLion omnimodal model on NVIDIA DGX Spark.
 
 ## Public API
 
@@ -16,7 +16,7 @@ It exposes two deployment-key-scoped aliases:
 | Alias | Endpoint | Backend |
 | --- | --- | --- |
 | `gpt-5.6-luna` | `POST /v1/chat/completions` | Luna translator to Codex Responses |
-| `omnilion` | `POST /v1/audio/transcriptions` | Local OmniLion NVFP4 inference |
+| `omnilion` | `POST /v1/chat/completions`, `POST /v1/audio/transcriptions` | Local OmniLion NVFP4 inference |
 
 See [`docs/api.md`](docs/api.md) for client examples,
 [`docs/luna-operations.md`](docs/luna-operations.md) for operator procedures,
@@ -26,7 +26,7 @@ container profile.
 ## Architecture
 
 LiteLLM is the only public model gateway. PostgreSQL, the Luna translator, the
-OmniLion transcription adapter, and native vLLM remain private. The optional
+OmniLion adapter, and native vLLM remain private. The optional
 Cloudflare Tunnel sends traffic to `http://litellm:4000`.
 
 OmniLion is pinned to the public W4A16 NVFP4 release:
@@ -39,8 +39,8 @@ release-manifest SHA-256: b69cec09f3e6dfbf713485eb637c2909ed43704791f4ecb208b0b6
 
 The runtime downloads that revision anonymously, verifies the manifest,
 installs its bundled vLLM plugin, and binds native vLLM only to Docker's bridge
-gateway. A private adapter converts the standard transcription request into the
-model's audio Chat Completions contract.
+gateway. A private adapter proxies omnimodal Chat Completions and converts the
+standard transcription request into the model's audio Chat Completions contract.
 
 ## Setup
 

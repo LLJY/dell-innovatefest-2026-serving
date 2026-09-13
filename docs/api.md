@@ -18,6 +18,7 @@ The current deployment key permits these public model aliases:
 | Alias | Endpoint | Purpose |
 | --- | --- | --- |
 | `gpt-5.6-luna` | `POST /v1/chat/completions` | Text, streaming, and tool-call relay |
+| `omnilion` | `POST /v1/chat/completions` | Text, audio, image, video, and mixed-modal inference |
 | `omnilion` | `POST /v1/audio/transcriptions` | Local speech transcription |
 
 ## Safe curl smoke scripts
@@ -97,6 +98,25 @@ for event in stream:
 Tools are relayed but never executed by the server. The client or external
 agent loop must validate and execute a returned tool call, then send its output
 in a later Chat Completions request.
+
+## OmniLion omnimodal chat completions
+
+OmniLion uses the same Chat Completions endpoint for text and multimodal input:
+
+```python
+response = client.chat.completions.create(
+    model="omnilion",
+    messages=[{"role": "user", "content": "Describe Singapore in one sentence."}],
+)
+print(response.choices[0].message.content)
+```
+
+Multimodal messages may combine OpenAI-compatible `text`, `input_audio`,
+`image_url`, and `video_url` content parts in one request. The adapter forwards
+the request and streaming response to the private OmniLion vLLM backend without
+exposing that backend directly. Media URLs must be embedded `data:` URLs;
+external URLs are rejected so the model server cannot fetch arbitrary network
+resources.
 
 ## OmniLion transcription
 
